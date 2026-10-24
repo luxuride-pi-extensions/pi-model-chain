@@ -1,0 +1,43 @@
+{
+  "name": "@luxuride-pi/model-chain",
+  "version": "0.1.0",
+  "description": "pi extension: selectable model (openrouter/chain) that falls back through a list of physical models",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "model",
+    "fallback",
+    "openrouter",
+    "virtual-model"
+  ],
+  "type": "module",
+  "license": "MIT",
+  "files": [
+    "index.ts",
+    "scripts/check-pack.mjs"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsc --noEmit false --outDir ./.test-build && node ./.test-build/test/chain.test.js; code=$?; rm -rf ./.test-build; exit $code",
+    "check:package-contents": "node scripts/check-pack.mjs"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-ai": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.4.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "@earendil-works/pi-ai": "^1.4.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luxuride-pi-extensions/pi-model-chain.git"
+  }
+}

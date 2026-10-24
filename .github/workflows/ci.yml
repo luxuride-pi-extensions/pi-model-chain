@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: typecheck and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # The peerDependency on @earendil-works/pi-coding-agent is provided by the
+      # pi host at runtime, but the devDependency of the same name is a real npm
+      # package; --legacy-peer-deps keeps npm from insisting the peer range
+      # resolve to the installed copy.
+      - name: install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: tests
+        run: npm test
+
+      # package.json's `files` allowlist decides what a git: install and an npm
+      # install actually ship, so assert the entry point is in both.
+      - name: the package ships its extension entry
+        run: node scripts/check-pack.mjs

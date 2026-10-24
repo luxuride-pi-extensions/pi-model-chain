@@ -1,0 +1,9 @@
+# Installed only for typechecking and the tests.
+node_modules/
+
+# `npm test` compiles into here and deletes it afterwards.
+.test-build/
+
+# Editor / OS noise
+.DS_Store
+*.swp
