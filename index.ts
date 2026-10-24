@@ -1,5 +1,5 @@
 /**
- * `openrouter-chain/chain` — one selectable model that is a fallback chain of physical models.
+ * `openrouter-chain/auto` — one selectable model that is a fallback chain of physical models.
  *
  * The model is listed under its own provider id, `openrouter-chain`, rather than under
  * `openrouter`: the listing namespace names the router, not the vendor whose models it happens to
@@ -48,8 +48,8 @@ export const PROVIDER = "openrouter";
  */
 export const ROUTER_PROVIDER = "openrouter-chain";
 
-/** Virtual model id, selected as `openrouter-chain/chain`. */
-export const VIRTUAL_ID = "chain";
+/** Virtual model id, selected as `openrouter-chain/auto`. */
+export const VIRTUAL_ID = "auto";
 
 /**
  * Fallback order, preferred first. Only the first entry is one this extension claims as "the"
@@ -172,24 +172,25 @@ export function choose(
 /**
  * Status-bar text, or undefined to clear it.
  *
- * Pi's built-in footer already appends `→ <routed model>` (`dist/modes/interactive/components/footer.js`),
- * but that text shares a line with token stats and the context meter, so at ~80 columns it is
- * truncated mid-id, and `routedModel` comes from `findLatestResponse()`, which skips `error` and
- * `aborted` responses — exactly when you most want to know which model was in play. This string
- * gets its own line, so it is never truncated and never disappears on failure.
+ * Pi's built-in footer already renders the routed model as `→ <model>` next to the selection, so
+ * only the two cases it cannot express are worth a line of their own:
+ *
+ * - before the first response there is nothing routed, and the footer shows only `auto • high`,
+ *   which names no model at all;
+ * - `routedModel` comes from `findLatestResponse()`, which skips `error` and `aborted` responses,
+ *   so after a failure the footer's `→` disappears instead of naming what failed.
  */
 export function statusText(
 	chainModel: string | undefined,
 	outcome: Outcome | undefined,
 	head: string | undefined,
 ): string | undefined {
-	if (chainModel === undefined || outcome === undefined) {
+	if (outcome === "failed" && chainModel !== undefined) return `chain • failed on: ${shorten(chainModel)}`;
+	if (chainModel === undefined || outcome === undefined || (outcome === "pending" && chainModel === undefined)) {
 		return head === undefined ? undefined : `chain • next up: ${shorten(head)}`;
 	}
-	// `pending` matters: a request in flight is not a failure, and saying "failed" while tokens are
-	// still streaming would be worse than saying nothing.
-	if (outcome === "pending") return `chain • → ${shorten(chainModel)}`;
-	return outcome === "answered" ? `chain • served by: ${shorten(chainModel)}` : `chain • failed on: ${shorten(chainModel)}`;
+	// The footer shows the in-flight and answered models itself.
+	return undefined;
 }
 
 /** Drop the vendor prefix and the redundant `deepseek-`, so `deepseek/deepseek-v4.1-flash-1017` fits. */

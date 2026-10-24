@@ -13,6 +13,7 @@ import {
 	DEMOTION_COOLDOWN_MS,
 	PROVIDER,
 	ROUTER_PROVIDER,
+	VIRTUAL_ID,
 	type ChainState,
 	choose,
 	statusText,
@@ -84,7 +85,7 @@ const cases: Array<[string, () => string, string]> = [
 		} catch (error) {
 			return (error as Error).message;
 		}
-	}, `openrouter-chain/chain: none of ${CHAIN.join(", ")} is available on openrouter`],
+	}, `openrouter-chain/auto: none of ${CHAIN.join(", ")} is available on openrouter`],
 ];
 
 let failed = 0;
@@ -122,7 +123,7 @@ const shape: Array<[string, unknown, unknown]> = [
 	// or `/model` would imply `chain` is an OpenRouter model that exists upstream.
 	["listed under the router namespace", definition.provider, "openrouter-chain"],
 	["router namespace is not the vendor provider", `${PROVIDER}`, "openrouter"],
-	["the id is chain", definition.id, "chain"],
+	["the id is auto", definition.id, "auto"],
 	["thinking levels are the chain intersection", definition.thinkingLevels.join(","), "low,high,max"],
 	// glm-5.3-flash cannot disable thinking; deepseek can.
 	["clamp keeps a level the model supports", clampLevel({ thinkingLevelMap: { low: "low", high: "high" } }, "high"), "high"],
@@ -134,10 +135,10 @@ const shape: Array<[string, unknown, unknown]> = [
 	// The status line has its own row, so it must stay short and survive a failure.
 	["status names the next model before the first answer", statusText(undefined, undefined, HEAD), "chain • next up: deepseek-v4.1-flash-1017"],
 	["status is silent when no chain entry is available", statusText(undefined, undefined, undefined), undefined],
-	["status names the model that served the turn", statusText(HEAD, "answered", undefined), "chain • served by: deepseek-v4.1-flash-1017"],
+	["status defers to the footer once a model answered", statusText(HEAD, "answered", undefined), undefined],
 	["status still names the model after a failure", statusText(THIRD, "failed", undefined), "chain • failed on: glm-5.3-flash"],
-	["status says a request is in flight, not that it failed", statusText(SECOND, "pending", undefined), "chain • → deepseek-v4.1-flash"],
-	["status fits an 80-column footer status row", String(visibleLength(statusText(HEAD, "answered", undefined)) <= 44), "true"],
+	["status defers to the footer while a request is in flight", statusText(SECOND, "pending", undefined), undefined],
+	["the status line is short enough for a footer row", String(visibleLength(statusText(CHAIN[2], "failed", undefined)) <= 44), "true"],
 ];
 for (const [name, actual, expected] of shape) {
 	if (actual === expected) {
@@ -163,7 +164,7 @@ function visibleLength(text: string | undefined): number {
 
 // Event wiring: the status line must follow the physical model, and must be cleared for
 // sessions that are not using the chain at all.
-const chainCtx = { ...ALL, model: { provider: ROUTER_PROVIDER, id: "chain" }, ui: { setStatus: (_k: string, text: string | undefined) => statuses.push(text) } };
+const chainCtx = { ...ALL, model: { provider: ROUTER_PROVIDER, id: VIRTUAL_ID }, ui: { setStatus: (_k: string, text: string | undefined) => statuses.push(text) } };
 const otherCtx = { ...ALL, model: { provider: "openrouter", id: HEAD }, ui: { setStatus: (_k: string, text: string | undefined) => statuses.push(text) } };
 const emit = (name: string, event: unknown, ctx: unknown) => listeners.get(name)?.(event, ctx);
 
@@ -180,7 +181,7 @@ check("a non-chain selection clears the status row", statuses.at(-1), undefined)
 
 statuses.length = 0;
 emit("message_end", { type: "message_end", message: { role: "assistant", model: HEAD, stopReason: "stop" } }, chainCtx);
-check("a successful response names the physical model", statuses.at(-1), "chain • served by: deepseek-v4.1-flash-1017");
+check("a successful response leaves the row empty (footer has it)", statuses.at(-1), undefined);
 
 statuses.length = 0;
 emit("message_end", { type: "message_end", message: { role: "assistant", model: SECOND, stopReason: "error" } }, chainCtx);

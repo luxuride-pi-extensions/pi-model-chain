@@ -1,6 +1,6 @@
 # pi-model-chain
 
-Pi extension: one selectable model, `openrouter-chain/chain`, that is a fallback chain of physical
+Pi extension: one selectable model, `openrouter-chain/auto`, that is a fallback chain of physical
 OpenRouter models.
 
 ```text
@@ -12,17 +12,17 @@ Set it as the default and pi has a defined answer for "the preferred model is un
 ```json
 {
   "defaultProvider": "openrouter-chain",
-  "defaultModel": "chain"
+  "defaultModel": "auto"
 }
 ```
 
-The selection is recorded as `openrouter-chain/chain`; each assistant message names the physical model
+The selection is recorded as `openrouter-chain/auto`; each assistant message names the physical model
 that actually answered, so the transcript stays honest about what ran.
 
-## Why `openrouter-chain/chain` and not `openrouter/chain`
+## Why `openrouter-chain/auto` and not `openrouter/auto`
 
 The listing namespace names the *router*, not the vendor whose models it picks between, so
-`/model` does not suggest that `chain` is an OpenRouter model that exists upstream. Two constants:
+`/model` does not suggest that `auto` is an OpenRouter model that exists upstream. Two constants:
 
 - `ROUTER_PROVIDER = "openrouter-chain"` — where the virtual model is listed. No provider exists
   under that id; Pi synthesizes a credential-free one for it (`withVirtualModels` in
@@ -71,22 +71,22 @@ selected; an empty catalog throws instead of silently picking something else.
 
 ## Seeing which model actually answered
 
-The footer's right side gets `chain • high → deepseek/deepseek-v4.1-flash-1017 • high` once a
-response exists, but that text shares a line with the token stats and the context meter, so at ~80
-columns it is truncated mid-id, and Pi derives it from the latest *successful* response — after a
-failure the `→` disappears exactly when you want it.
+The footer's right side gets `auto • high → deepseek/deepseek-v4.1-flash-1017 • high` once a
+response exists, which is the normal way to see what answered. It is enough most of the time, but
+two cases have no answer in it: before the first response nothing is routed, so you only see
+`auto • high`; and Pi derives the arrow from the latest *successful* response, so after a failure it
+disappears instead of naming what failed.
 
-This extension therefore also writes a status row of its own:
+So this extension writes a status row only for those two cases:
 
 ```
 chain • next up: deepseek-v4.1-flash-1017     before the first turn
-chain • → deepseek-v4.1-flash-1017            request in flight
-chain • served by: deepseek-v4.1-flash-1017   latest response
 chain • failed on: glm-5.3-flash              latest response errored
 ```
 
-It is one short line with its own row, so it is not truncated and it does not go blank on failure.
-It is only written when the selected model *is* the chain; selecting a physical model clears it.
+Both fit in a footer row, so they are not truncated the way the arrow can be at ~80 columns.
+The row is only written when the selected model *is* the chain; selecting a physical model clears it.
+For an in-flight or successful request it is cleared, because the footer already shows that model.
 
 ## Configure
 
@@ -124,8 +124,8 @@ preference permits only: no-such-provider-xyz`, which is the override arriving i
 ## Subagents
 
 Foreground (in-process) children do not load the parent's ambient extensions, so a child pointed at
-`openrouter-chain/chain` sends that raw id to OpenRouter and gets
-`400: chain is not a valid model ID`. Give children the extension explicitly:
+`openrouter-chain/auto` sends that raw id to OpenRouter and gets
+`400: auto is not a valid model ID`. Give children the extension explicitly:
 
 ```json
 {
@@ -150,7 +150,7 @@ or symlink it next to your other extensions:
 ln -s /path/to/pi-model-chain ~/.pi/agent/extensions/model-chain
 ```
 
-Then set `defaultModel` to `chain` (or select `openrouter-chain/chain` with `/model`).
+Then set `defaultModel` to `auto` (or select `openrouter-chain/auto` with `/model`).
 
 ## Development
 
