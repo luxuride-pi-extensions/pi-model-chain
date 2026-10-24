@@ -15,6 +15,7 @@ import {
 	ROUTER_PROVIDER,
 	type ChainState,
 	choose,
+	statusText,
 } from "../index.js";
 
 type Registry = Pick<ExtensionContext, "modelRegistry">;
@@ -99,9 +100,13 @@ for (const [name, run, expected] of cases) {
 
 // The registration the extension performs is separate from `choose()`; assert its shape too.
 const registered: unknown[] = [];
-const fakePi = { registerVirtualModel: (definition: unknown) => registered.push(definition) };
+const statuses: Array<string | undefined> = [];
+const listeners = new Map<string, (event: unknown, ctx: unknown) => unknown>();
 const { default: register } = await import("../index.js");
-register(fakePi as never);
+register({
+	registerVirtualModel: (definition: unknown) => registered.push(definition),
+	on: (name: string, handler: (event: unknown, ctx: unknown) => unknown) => listeners.set(name, handler),
+} as never);
 const definition = registered[0] as {
 	provider: string;
 	id: string;
@@ -125,6 +130,14 @@ const shape: Array<[string, unknown, unknown]> = [
 	["clamp leaves a mapless model alone", clampLevel({}, "off"), "off"],
 	["limits are the chain minimum", `${definition.contextWindow}/${definition.maxTokens}`, "1048575/393216"],
 	["route() returns the physical model", definition.route(request("user"), ALL).model.id, HEAD],
+
+	// The status line has its own row, so it must stay short and survive a failure.
+	["status names the next model before the first answer", statusText(undefined, undefined, HEAD), "chain • next up: deepseek-v4.1-flash-1017"],
+	["status is silent when no chain entry is available", statusText(undefined, undefined, undefined), undefined],
+	["status names the model that served the turn", statusText(HEAD, "answered", undefined), "chain • served by: deepseek-v4.1-flash-1017"],
+	["status still names the model after a failure", statusText(THIRD, "failed", undefined), "chain • failed on: glm-5.3-flash"],
+	["status says a request is in flight, not that it failed", statusText(SECOND, "pending", undefined), "chain • → deepseek-v4.1-flash"],
+	["status fits an 80-column footer status row", String(visibleLength(statusText(HEAD, "answered", undefined)) <= 44), "true"],
 ];
 for (const [name, actual, expected] of shape) {
 	if (actual === expected) {
@@ -135,8 +148,46 @@ for (const [name, actual, expected] of shape) {
 	}
 }
 
+function check(name: string, actual: unknown, expected: unknown): void {
+	if (actual === expected) {
+		console.log(`ok   ${name}`);
+	} else {
+		failed += 1;
+		console.error(`FAIL ${name}\n  expected ${String(expected)}\n  actual   ${String(actual)}`);
+	}
+}
+
+function visibleLength(text: string | undefined): number {
+	return [...(text ?? "")].length;
+}
+
+// Event wiring: the status line must follow the physical model, and must be cleared for
+// sessions that are not using the chain at all.
+const chainCtx = { ...ALL, model: { provider: ROUTER_PROVIDER, id: "chain" }, ui: { setStatus: (_k: string, text: string | undefined) => statuses.push(text) } };
+const otherCtx = { ...ALL, model: { provider: "openrouter", id: HEAD }, ui: { setStatus: (_k: string, text: string | undefined) => statuses.push(text) } };
+const emit = (name: string, event: unknown, ctx: unknown) => listeners.get(name)?.(event, ctx);
+
+// The shape checks above already routed once, so reset the observation first; at real startup
+// nothing has been routed yet.
+emit("model_select", { type: "model_select", model: chainCtx.model, previousModel: undefined, source: "restore" }, chainCtx);
+statuses.length = 0;
+emit("session_start", { type: "session_start" }, chainCtx);
+check("session_start announces the next model", statuses.at(-1), "chain • next up: deepseek-v4.1-flash-1017");
+
+statuses.length = 0;
+emit("session_start", { type: "session_start" }, otherCtx);
+check("a non-chain selection clears the status row", statuses.at(-1), undefined);
+
+statuses.length = 0;
+emit("message_end", { type: "message_end", message: { role: "assistant", model: HEAD, stopReason: "stop" } }, chainCtx);
+check("a successful response names the physical model", statuses.at(-1), "chain • served by: deepseek-v4.1-flash-1017");
+
+statuses.length = 0;
+emit("message_end", { type: "message_end", message: { role: "assistant", model: SECOND, stopReason: "error" } }, chainCtx);
+check("a failed response names the model it failed on", statuses.at(-1), "chain • failed on: deepseek-v4.1-flash");
+
 if (failed > 0) {
 	console.error(`\n${failed} assertion(s) failed`);
 	process.exit(1);
 }
-console.log(`\nall ${cases.length + shape.length} assertions passed`);
+console.log(`\nall ${cases.length + shape.length + 4} assertions passed`);

@@ -169,7 +169,87 @@ export function choose(
 	};
 }
 
+/**
+ * Status-bar text, or undefined to clear it.
+ *
+ * Pi's built-in footer already appends `→ <routed model>` (`dist/modes/interactive/components/footer.js`),
+ * but that text shares a line with token stats and the context meter, so at ~80 columns it is
+ * truncated mid-id, and `routedModel` comes from `findLatestResponse()`, which skips `error` and
+ * `aborted` responses — exactly when you most want to know which model was in play. This string
+ * gets its own line, so it is never truncated and never disappears on failure.
+ */
+export function statusText(
+	chainModel: string | undefined,
+	outcome: Outcome | undefined,
+	head: string | undefined,
+): string | undefined {
+	if (chainModel === undefined || outcome === undefined) {
+		return head === undefined ? undefined : `chain • next up: ${shorten(head)}`;
+	}
+	// `pending` matters: a request in flight is not a failure, and saying "failed" while tokens are
+	// still streaming would be worse than saying nothing.
+	if (outcome === "pending") return `chain • → ${shorten(chainModel)}`;
+	return outcome === "answered" ? `chain • served by: ${shorten(chainModel)}` : `chain • failed on: ${shorten(chainModel)}`;
+}
+
+/** Drop the vendor prefix and the redundant `deepseek-`, so `deepseek/deepseek-v4.1-flash-1017` fits. */
+function shorten(id: string): string {
+	const bare = id.includes("/") ? id.slice(id.indexOf("/") + 1) : id;
+	return bare.startsWith("deepseek-deepseek-") ? bare.slice("deepseek-".length) : bare;
+}
+
+/** Where the latest request on the chain ended up. */
+export type Outcome = "pending" | "answered" | "failed";
+
+/** The chain model a failed request was on: `retry` carries it, a failed response may name it. */
+function failureModel(request: { failed?: { model: { id: string } } }): string | undefined {
+	const id = request.failed?.model.id;
+	return id !== undefined && CHAIN.includes(id) ? id : undefined;
+}
+
 export default function (pi: ExtensionAPI) {
+	/** Which chain entry the latest request/response used, and how it ended. */
+	let observed: { model: string; outcome: Outcome } | undefined;
+
+	const isChainSelected = (ctx: ExtensionContext): boolean =>
+		ctx.model?.provider === ROUTER_PROVIDER && ctx.model.id === VIRTUAL_ID;
+
+	const refresh = (ctx: ExtensionContext): void => {
+		// `ui` is absent in headless contexts (SDK, some subagent runs); routing must not need it.
+		const setStatus = ctx.ui?.setStatus;
+		if (typeof setStatus !== "function") return;
+		if (!isChainSelected(ctx)) {
+			setStatus("chain", undefined);
+			return;
+		}
+		// Startup: nothing has answered yet, so say what the next request will try.
+		setStatus(
+			"chain",
+			statusText(observed?.model, observed?.outcome, observed === undefined ? chainHead(ctx) : undefined),
+		);
+	};
+
+	pi.on("session_start", (_event, ctx) => refresh(ctx));
+	pi.on("model_select", (_event, ctx) => {
+		observed = undefined;
+		refresh(ctx);
+	});
+
+	// Assistant messages name the physical model that actually produced them.
+	pi.on("message_end", (event, ctx) => {
+		const message = event.message;
+		if (message.role !== "assistant" || !isChainSelected(ctx)) return;
+		const id = (message as { model?: string }).model;
+		const outcome: Outcome =
+			message.stopReason === "error" || message.stopReason === "aborted" ? "failed" : "answered";
+		if (id !== undefined) observed = { model: id, outcome };
+		refresh(ctx);
+	});
+
+	// A retry runs before any response exists; record which model it is leaving so the status line
+	// shows the failure instead of going blank.
+	pi.on("turn_start", (_event, ctx) => refresh(ctx));
+
 	pi.registerVirtualModel<ChainState>({
 		provider: ROUTER_PROVIDER,
 		id: VIRTUAL_ID,
@@ -185,6 +265,15 @@ export default function (pi: ExtensionAPI) {
 		maxTokens: 393_216,
 		route(request, ctx) {
 			const { id, state } = choose(request, ctx);
+			if (request.reason === "retry") {
+				const leaving = failureModel(request);
+				// Name the model being left until the new one produces something.
+				if (leaving !== undefined) observed = { model: leaving, outcome: "failed" };
+			}
+			if (observed?.outcome !== "failed" || request.reason !== "retry") {
+				observed = { model: id, outcome: "pending" };
+			}
+			refresh(ctx);
 			return routeTo(request, ctx, id, state);
 		},
 	});

@@ -69,6 +69,25 @@ A demoted head is not retried for 10 minutes, so a flapping provider cannot cost
 rollback on every message. A chain entry that is missing from the catalog is skipped, never
 selected; an empty catalog throws instead of silently picking something else.
 
+## Seeing which model actually answered
+
+The footer's right side gets `chain • high → deepseek/deepseek-v4.1-flash-1017 • high` once a
+response exists, but that text shares a line with the token stats and the context meter, so at ~80
+columns it is truncated mid-id, and Pi derives it from the latest *successful* response — after a
+failure the `→` disappears exactly when you want it.
+
+This extension therefore also writes a status row of its own:
+
+```
+chain • next up: deepseek-v4.1-flash-1017     before the first turn
+chain • → deepseek-v4.1-flash-1017            request in flight
+chain • served by: deepseek-v4.1-flash-1017   latest response
+chain • failed on: glm-5.3-flash              latest response errored
+```
+
+It is one short line with its own row, so it is not truncated and it does not go blank on failure.
+It is only written when the selected model *is* the chain; selecting a physical model clears it.
+
 ## Configure
 
 Everything is in `index.ts`:
