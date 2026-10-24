@@ -7,7 +7,15 @@ import assert from "node:assert/strict";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { CHAIN, clampLevel, DEMOTION_COOLDOWN_MS, type ChainState, choose } from "../index.js";
+import {
+	CHAIN,
+	clampLevel,
+	DEMOTION_COOLDOWN_MS,
+	PROVIDER,
+	ROUTER_PROVIDER,
+	type ChainState,
+	choose,
+} from "../index.js";
 
 type Registry = Pick<ExtensionContext, "modelRegistry">;
 
@@ -75,7 +83,7 @@ const cases: Array<[string, () => string, string]> = [
 		} catch (error) {
 			return (error as Error).message;
 		}
-	}, `openrouter/chain: none of ${CHAIN.join(", ")} is available on openrouter`],
+	}, `openrouter-chain/chain: none of ${CHAIN.join(", ")} is available on openrouter`],
 ];
 
 let failed = 0;
@@ -105,8 +113,11 @@ const definition = registered[0] as {
 
 const shape: Array<[string, unknown, unknown]> = [
 	["registers exactly one model", registered.length, 1],
-	["provider is openrouter", definition.provider, "openrouter"],
-	["id is chain", definition.id, "chain"],
+	// The listing namespace names the router; the catalog lookups use the vendor. They must differ,
+	// or `/model` would imply `chain` is an OpenRouter model that exists upstream.
+	["listed under the router namespace", definition.provider, "openrouter-chain"],
+	["router namespace is not the vendor provider", `${PROVIDER}`, "openrouter"],
+	["the id is chain", definition.id, "chain"],
 	["thinking levels are the chain intersection", definition.thinkingLevels.join(","), "low,high,max"],
 	// glm-5.3-flash cannot disable thinking; deepseek can.
 	["clamp keeps a level the model supports", clampLevel({ thinkingLevelMap: { low: "low", high: "high" } }, "high"), "high"],

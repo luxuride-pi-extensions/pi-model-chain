@@ -1,5 +1,12 @@
 /**
- * `openrouter/chain` — one selectable model that is a fallback chain of physical models.
+ * `openrouter-chain/chain` — one selectable model that is a fallback chain of physical models.
+ *
+ * The model is listed under its own provider id, `openrouter-chain`, rather than under
+ * `openrouter`: the listing namespace names the router, not the vendor whose models it happens to
+ * pick between, so `/model` does not suggest that `chain` is an OpenRouter model that exists
+ * upstream. Every chain entry still belongs to `PROVIDER`, which is what the catalog lookups and
+ * the routed requests use — a virtual model must return a physical model, and a physical model's
+ * provider is the one that authenticates and streams it.
  *
  * Pi resolves `settings.defaultModel` by looking the id up in the catalog and checking provider
  * auth. When that lookup fails, `dist/core/model-resolver.js` falls through to
@@ -30,10 +37,18 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 
-/** Provider the virtual model is listed under, and the provider every chain entry belongs to. */
+/** Provider every chain entry belongs to: the one that authenticates and streams the request. */
 export const PROVIDER = "openrouter";
 
-/** Virtual model id, selected as `openrouter/chain`. */
+/**
+ * Provider the virtual model is listed under. Distinct from `PROVIDER` on purpose: this is a
+ * router namespace, and no such provider exists upstream. Pi synthesizes a credential-free
+ * provider for an id nothing uses (`withVirtualModels`, dist/core/virtual-models.js), which is
+ * safe here because every route still needs `PROVIDER` credentials.
+ */
+export const ROUTER_PROVIDER = "openrouter-chain";
+
+/** Virtual model id, selected as `openrouter-chain/chain`. */
 export const VIRTUAL_ID = "chain";
 
 /**
@@ -100,7 +115,9 @@ function routeTo(
 	state?: ChainState,
 ): ModelRoute<ChainState> {
 	const model = ctx.modelRegistry.find(PROVIDER, id);
-	if (model === undefined) throw new Error(`${PROVIDER}/${VIRTUAL_ID}: ${PROVIDER}/${id} is not in the catalog`);
+	if (model === undefined) {
+		throw new Error(`${ROUTER_PROVIDER}/${VIRTUAL_ID}: ${PROVIDER}/${id} is not in the catalog`);
+	}
 	return { model, thinkingLevel: clampLevel(model, request.thinkingLevel), state };
 }
 
@@ -143,7 +160,7 @@ export function choose(
 	const head = chainHead(ctx);
 	if (head === undefined) {
 		throw new Error(
-			`${PROVIDER}/${VIRTUAL_ID}: none of ${CHAIN.join(", ")} is available on ${PROVIDER}`,
+			`${ROUTER_PROVIDER}/${VIRTUAL_ID}: none of ${CHAIN.join(", ")} is available on ${PROVIDER}`,
 		);
 	}
 	return {
@@ -154,14 +171,14 @@ export function choose(
 
 export default function (pi: ExtensionAPI) {
 	pi.registerVirtualModel<ChainState>({
-		provider: PROVIDER,
+		provider: ROUTER_PROVIDER,
 		id: VIRTUAL_ID,
-		name: `Chain (${CHAIN.join(" -> ")})`,
-	// Intersection of the chain's supported levels, read from each entry's `thinkingLevelMap`:
-	// the deepseek models allow `off` but reject `minimal`/`medium`/`xhigh`, and glm-5.3-flash
-	// rejects `off` too. `off` is left out because glm cannot honour it; a session that still
-	// holds the level (chosen on another model) gets it clamped by `clampLevel`.
-	thinkingLevels: ["low", "high", "max"],
+		name: `OpenRouter chain (${CHAIN.join(" -> ")})`,
+		// Intersection of the chain's supported levels, read from each entry's `thinkingLevelMap`:
+		// the deepseek models allow `off` but reject `minimal`/`medium`/`xhigh`, and glm-5.3-flash
+		// rejects `off` too. `off` is left out because glm cannot honour it; a session that still
+		// holds the level (chosen on another model) gets it clamped by `clampLevel`.
+		thinkingLevels: ["low", "high", "max"],
 		// The chain's smallest limits, so the placeholder never advertises more than the model
 		// that actually answers. After the first response Pi uses that model's own limits.
 		contextWindow: 1_048_575,

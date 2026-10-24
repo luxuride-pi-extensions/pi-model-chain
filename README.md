@@ -1,6 +1,6 @@
 # pi-model-chain
 
-Pi extension: one selectable model, `openrouter/chain`, that is a fallback chain of physical
+Pi extension: one selectable model, `openrouter-chain/chain`, that is a fallback chain of physical
 OpenRouter models.
 
 ```text
@@ -11,13 +11,29 @@ Set it as the default and pi has a defined answer for "the preferred model is un
 
 ```json
 {
-  "defaultProvider": "openrouter",
+  "defaultProvider": "openrouter-chain",
   "defaultModel": "chain"
 }
 ```
 
-The selection is recorded as `openrouter/chain`; each assistant message names the physical model
+The selection is recorded as `openrouter-chain/chain`; each assistant message names the physical model
 that actually answered, so the transcript stays honest about what ran.
+
+## Why `openrouter-chain/chain` and not `openrouter/chain`
+
+The listing namespace names the *router*, not the vendor whose models it picks between, so
+`/model` does not suggest that `chain` is an OpenRouter model that exists upstream. Two constants:
+
+- `ROUTER_PROVIDER = "openrouter-chain"` — where the virtual model is listed. No provider exists
+  under that id; Pi synthesizes a credential-free one for it (`withVirtualModels` in
+  `dist/core/virtual-models.js`), which is safe because every route still needs real credentials.
+- `PROVIDER = "openrouter"` — the vendor every chain entry belongs to, used for the catalog lookup
+  and therefore for the request that gets streamed.
+
+A virtual model must return a *physical* model, and a physical model's provider is the one that
+authenticates and streams it, so `PROVIDER` cannot be replaced by the router namespace. If the chain
+ever spans providers, `PROVIDER` stops being enough on its own and `CHAIN` decisions must carry a
+provider per entry — the constant is the place that change starts.
 
 ## Why this exists
 
@@ -89,13 +105,13 @@ preference permits only: no-such-provider-xyz`, which is the override arriving i
 ## Subagents
 
 Foreground (in-process) children do not load the parent's ambient extensions, so a child pointed at
-`openrouter/chain` sends that raw id to OpenRouter and gets
+`openrouter-chain/chain` sends that raw id to OpenRouter and gets
 `400: chain is not a valid model ID`. Give children the extension explicitly:
 
 ```json
 {
   "subagents": {
-    "defaultModel": "openrouter/chain",
+    "defaultModel": "openrouter-chain/chain",
     "defaultSubagentOnlyExtensions": ["/home/you/.pi/agent/extensions/model-chain/index.ts"]
   }
 }
@@ -115,7 +131,7 @@ or symlink it next to your other extensions:
 ln -s /path/to/pi-model-chain ~/.pi/agent/extensions/model-chain
 ```
 
-Then set `defaultModel` to `chain` (or select `openrouter/chain` with `/model`).
+Then set `defaultModel` to `chain` (or select `openrouter-chain/chain` with `/model`).
 
 ## Development
 
