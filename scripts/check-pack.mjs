@@ -19,7 +19,10 @@ if (!pack || !Array.isArray(pack.files)) {
 
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const shipped = pack.files.map((file) => file.path).sort();
-const always = ["package.json", "README.md"];
+// npm always packs these, whatever `files` says: the manifest, the readme, and
+// the license. Listing LICENSE here is what lets the allowlist below stay a
+// closed list instead of a list of exceptions.
+const always = ["package.json", "README.md", "LICENSE"];
 const required = [...pkg.files, ...always];
 
 const problems = [];
